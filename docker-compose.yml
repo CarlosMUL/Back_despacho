@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  mysql-despachos:
+    image: mysql:8.0
+    container_name: mysql-despachos
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_despachos_data:/var/lib/mysql
+    networks:
+      - despachos-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  despachos-api:
+    build: .
+    container_name: despachos-api
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      DB_ENDPOINT: mysql-despachos
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      mysql-despachos:
+        condition: service_healthy
+    networks:
+      - despachos-network
+
+volumes:
+  mysql_despachos_data:
+    name: mysql_despachos_data
+
+networks:
+  despachos-network:
+    driver: bridge
