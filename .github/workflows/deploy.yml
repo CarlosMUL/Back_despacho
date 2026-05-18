@@ -29,23 +29,30 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/despachos-api:latest
 
-      - name: Deploy en EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_BACKEND_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/despachos-api:latest
-            docker stop despachos-api || true
-            docker rm despachos-api || true
-            docker run -d \
-              --name despachos-api \
-              --restart unless-stopped \
-              -p 8081:8081 \
-              -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} \
-              -e DB_PORT=${{ secrets.DB_PORT }} \
-              -e DB_NAME=${{ secrets.DB_NAME_DESPACHOS }} \
-              -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
-              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
-              ${{ secrets.DOCKERHUB_USERNAME }}/despachos-api:latest
+      - name: Configurar clave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.EC2_FRONTEND_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy en EC2 Backend via jump host
+        run: |
+          ssh -i ~/.ssh/id_rsa \
+            -o ProxyJump=${{ secrets.EC2_USER }}@${{ secrets.EC2_FRONTEND_HOST }} \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.EC2_USER }}@${{ secrets.EC2_BACKEND_PRIVATE_IP }} \
+            "docker pull ${{ secrets.DOCKERHUB_USERNAME }}/despachos-api:latest && \
+             docker stop despachos-api || true && \
+             docker rm despachos-api || true && \
+             docker run -d \
+               --name despachos-api \
+               --restart unless-stopped \
+               --network backend-net \
+               -p 8081:8081 \
+               -e DB_ENDPOINT=${{ secrets.DB_ENDPOINT }} \
+               -e DB_PORT=${{ secrets.DB_PORT }} \
+               -e DB_NAME=${{ secrets.DB_NAME_DESPACHOS }} \
+               -e DB_USERNAME=${{ secrets.DB_USERNAME }} \
+               -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+               ${{ secrets.DOCKERHUB_USERNAME }}/despachos-api:latest"
